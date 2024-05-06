@@ -65,7 +65,7 @@ pipeline {
                 }
                 sh 'echo ${NODE_IP}'
                 sh 'echo "REACT_APP_BASE_URL=http://${NODE_IP}:5000/" > ./bluerentalcars-frontend/.env.development'
-                sh 'cat ./react/client/.env'
+                sh 'cat ./react/client/.env.development'
                 sh 'docker build --force-rm -t "$ECR_REGISTRY/$APP_REPO_NAME:postgr" -f ./postgresql/dockerfile-postgresql .'
                 sh 'docker build --force-rm -t "$ECR_REGISTRY/$APP_REPO_NAME:java" -f ./bluerentalcars-backend/dockerfile-java .'
                 sh 'docker build --force-rm -t "$ECR_REGISTRY/$APP_REPO_NAME:react" -f ./bluerentalcars-frontend/dockerfile-react .'

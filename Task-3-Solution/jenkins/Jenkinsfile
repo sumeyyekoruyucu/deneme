@@ -64,7 +64,7 @@ pipeline {
                     env.NODE_IP = sh(script: 'terraform output -raw node_public_ip', returnStdout:true).trim()
                 }
                 sh 'echo ${NODE_IP}'
-                sh 'echo "REACT_APP_BASE_URL=http://${NODE_IP}:5000/" > ./bluerentalcars-frontend/.env'
+                sh 'echo "REACT_APP_BASE_URL=http://${NODE_IP}:5000/" > ./bluerentalcars-frontend/.env.development'
                 sh 'cat ./react/client/.env'
                 sh 'docker build --force-rm -t "$ECR_REGISTRY/$APP_REPO_NAME:postgr" -f ./postgresql/dockerfile-postgresql .'
                 sh 'docker build --force-rm -t "$ECR_REGISTRY/$APP_REPO_NAME:java" -f ./bluerentalcars-backend/dockerfile-java .'

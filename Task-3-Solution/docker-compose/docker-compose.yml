@@ -1,0 +1,43 @@
+version: "3.7"
+services:
+    blue-car_postgre:
+        image: "575088656484.dkr.ecr.us-east-1.amazonaws.com/techpro-repo/blue-car:postgr"
+        environment:
+            POSTGRES_USER: techprodb_user
+            POSTGRES_PASSWORD: password
+            POSTGRES_DB: carrental
+        networks:
+            - blue-car-net
+        ports:
+            - "5432:5432"
+    blue-car_react:
+        image: "575088656484.dkr.ecr.us-east-1.amazonaws.com/techpro-repo/blue-car:react"
+        restart: always
+        environment:
+            REACT_APP_API_URL: http://${NODE_IP}:8080/car-rental/api/
+        depends_on:
+            - blue-car_java
+            - blue-car_postgre
+        ports:
+            - "3000:3000"
+        networks:
+            - blue-car-net
+    blue-car_java:
+        image: "575088656484.dkr.ecr.us-east-1.amazonaws.com/techpro-repo/blue-car:openjdk11"
+        restart: always
+        environment:
+            SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/carrental
+            SPRING_DATASOURCE_USERNAME: techprodb_user
+            SPRING_DATASOURCE_PASSWORD: password
+        depends_on:
+            - blue-car_postgre
+        ports:
+            - "8080:8080"
+        networks:
+            - blue-car-net
+networks:
+    blue-car-net:
+        driver: bridge
+
+volumes:
+    todovol:

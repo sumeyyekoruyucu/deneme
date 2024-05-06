@@ -1,0 +1,153 @@
+pipeline {
+    agent any
+
+    parameters {
+        choice(name: 'TEAM', choices: ['default', 'devops_team', 'dev_team', 'test_team'], description: 'Select the target team')
+        string(name: 'INSTANCE_TYPE', defaultValue: 't2.micro', description: 'AWS EC2 instance type')
+        string(name: 'INSTANCE_COUNT', defaultValue: '1', description: 'Number of instances to deploy, must be a positive number')
+    }
+
+    environment {
+        AWS_REGION= "us-east-1"
+        AWS_ACCOUNT_ID=sh(script:'export PATH="$PATH:/usr/local/bin" && aws sts get-caller-identity --query Account --output text', returnStdout:true).trim()
+        ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+        APP_REPO_NAME = "techpro-repo/blue-car"
+        INSTANCE_COUNT_INT = "${params.INSTANCE_COUNT.toInteger()}"
+    }
+    
+    stages {    
+        stage('Create Key Pair for AWS instance') {
+            steps {
+                echo "Creating Key Pair "
+                sh """
+                    aws ec2 create-key-pair --region ${AWS_REGION} --key-name ${TEAM} --query KeyMaterial --output text > ${TEAM}
+                    chmod 400 ${TEAM}
+                """
+            }
+        }
+        
+        stage('Create AWS Resources') {
+            steps {
+                sh """
+                    cd Task-3-Solution/terraform
+                    terraform workspace select ${params.TEAM} || terraform workspace new ${params.TEAM}
+                    terraform init
+                    terraform apply -var='ec2_type=${params.INSTANCE_TYPE}' \
+                                    -var='num_of_instance=${INSTANCE_COUNT_INT}' \
+                                    -var='ec2_key=${TEAM}' \
+                                    -auto-approve
+                """
+                
+            }
+        }
+        
+
+        stage('Create ECR Repo') {
+            steps {
+                echo 'Creating ECR Repo for App'
+                sh """
+                    aws ecr describe-repositories --region ${AWS_REGION} --repository-name ${APP_REPO_NAME} || \
+                    aws ecr create-repository \
+                    --repository-name ${APP_REPO_NAME} \
+                    --image-scanning-configuration scanOnPush=false \
+                    --image-tag-mutability MUTABLE \
+                    --region ${AWS_REGION}
+                """
+            }
+        }
+
+
+        stage('Build App Docker Image') {
+            steps {
+                echo 'Building App Image'
+                script {
+                    env.NODE_IP = sh(script: 'terraform output -raw node_public_ip', returnStdout:true).trim()
+                }
+                sh 'echo ${NODE_IP}'
+                sh 'echo "REACT_APP_BASE_URL=http://${NODE_IP}:5000/" > ./bluerentalcars-frontend/.env'
+                sh 'cat ./react/client/.env'
+                sh 'docker build --force-rm -t "$ECR_REGISTRY/$APP_REPO_NAME:postgr" -f ./postgresql/dockerfile-postgresql .'
+                sh 'docker build --force-rm -t "$ECR_REGISTRY/$APP_REPO_NAME:java" -f ./bluerentalcars-backend/dockerfile-java .'
+                sh 'docker build --force-rm -t "$ECR_REGISTRY/$APP_REPO_NAME:react" -f ./bluerentalcars-frontend/dockerfile-react .'
+                sh 'docker image ls'
+            }
+        }
+
+        stage('Push Image to ECR Repo') {
+            steps {
+                echo 'Pushing App Image to ECR Repo'
+                sh 'aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin "$ECR_REGISTRY"'
+                sh 'docker push "$ECR_REGISTRY/$APP_REPO_NAME:postgr"'
+                sh 'docker push "$ECR_REGISTRY/$APP_REPO_NAME:nodejs"'
+                sh 'docker push "$ECR_REGISTRY/$APP_REPO_NAME:react"'
+            }
+        }
+
+        stage('wait the instance') {
+            steps {
+                script {
+                    echo 'Waiting for the instance'
+                    id = sh(script: 'aws ec2 describe-instances --filters Name=tag-value,Values="${TEAM}_server" Name=instance-state-name,Values=running --query Reservations[*].Instances[*].[InstanceId] --output text',  returnStdout:true).trim()
+                    sh 'aws ec2 wait instance-status-ok --instance-ids $id'
+                }
+            }
+        }
+        stage('Configure AWS Instance') {
+            steps {
+                echo 'Configure AWS Instance'
+                sh 'ls -l'
+                sh 'ansible --version'
+                sh 'ansible-inventory -i ./Task-3-Solution/ansible/inventory_aws_ec2.yml --graph'
+                sh """
+                    cd Task-2-Solution/ansible
+<<<<<<< HEAD
+                    ansible-playbook -i inventory_aws_ec2.yml --private-key=${WORKSPACE}/${TEAM} ${TEAM}.yml -vvv
+=======
+                    ansible-playbook -i inventory_aws_ec2.yml --private-key=$WORKSPACE/${TEAM} ${TEAM}.yml -vvv
+>>>>>>> 20bc26e545201377d51868942c5b86b7ac7f1797
+                """
+            }
+        }
+
+    }
+
+    post {
+        always {
+            echo 'Deleting all local images'
+            sh 'docker image prune -af'
+        }
+        success {
+            echo 'Delete the Key Pair'
+                timeout(time:5, unit:'DAYS'){
+                input message:'Approve terminate'
+                }
+            sh """
+                aws ec2 delete-key-pair --region ${AWS_REGION} --key-name ${TEAM}
+                rm -rf ${TEAM}
+                """
+            echo 'Delete AWS Resources'            
+                sh """
+                cd Task-3-Solution/terraform
+                terraform destroy --auto-approve
+                """
+        }
+        failure {
+
+            echo 'Delete the Key Pair'
+            sh """
+                aws ecr delete-repository \
+                --repository-name ${APP_REPO_NAME} \
+                --region ${AWS_REGION}\
+                --force
+                aws ec2 delete-key-pair --region ${AWS_REGION} --key-name ${TEAM}
+                rm -rf ${TEAM}
+                """
+            echo 'Delete AWS Resources'            
+                sh """
+                cd Task-3-Solution/terraform
+                terraform destroy --auto-approve
+                """
+        }
+    }
+
+}

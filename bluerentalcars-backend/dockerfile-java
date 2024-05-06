@@ -1,0 +1,23 @@
+FROM maven:3.8.3-openjdk-11
+
+# Create app directory
+WORKDIR /usr/src/main/java
+
+
+COPY ./bluerentalcars-frontend/package*.json ./
+
+RUN mvn clean install
+# npm install
+# If you are building your code for production
+# RUN npm ci --only=production
+
+FROM openjdk:11
+
+
+COPY --from=build ./bluerentalcars-backend/src/main/java/com/backend/carrental/ ./CarRentalApplication.java.jar
+WORKDIR /
+# copy all files into the image
+
+EXPOSE 8080
+
+CMD ["openjdk", "-jar", "CarRentalApplication.java.jar"]

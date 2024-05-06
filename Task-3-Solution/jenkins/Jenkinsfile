@@ -99,7 +99,7 @@ pipeline {
                 sh 'ansible --version'
                 sh 'ansible-inventory -i ./Task-3-Solution/ansible/inventory_aws_ec2.yml --graph'
                 sh """
-                    cd Task-2-Solution/ansible
+                    cd Task-3-Solution/ansible
 <<<<<<< HEAD
                     ansible-playbook -i inventory_aws_ec2.yml --private-key=${WORKSPACE}/${TEAM} ${TEAM}.yml -vvv
 =======
